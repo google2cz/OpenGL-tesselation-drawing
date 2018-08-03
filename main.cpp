@@ -1,12 +1,12 @@
-#include<gl/glew.h>
+#include<GL/glew.h>
 #include<GLFW/glfw3.h>
 #include<glm/common.hpp>
 #include<glm/gtc/matrix_transform.hpp>
 
-#include<gl/GL.h>
-#include<gl/GLU.h>
+#include<GL/gl.h>
 
 #include<iostream>
+#include<chrono>
 #include<thread>
 #include<string>
 #include<vector>
@@ -146,24 +146,32 @@ GLuint MatrixID;
 void setShader(GLuint type, const std::string& shader, GLuint program) {
 	GLuint shader_ID=glCreateShader(type);
 	const char* adapter[1]={ shader.c_str() };
-	int len_adapter[1]={ shader.length() };
+	int len_adapter[1]={ (int)shader.length() };
 	glShaderSource(shader_ID, 1, adapter, 0);
 	glCompileShader(shader_ID);
 	GLint success=0;
 	glGetShaderiv(shader_ID, GL_COMPILE_STATUS, &success);
 	std::cout<<"COMPILE: "<<success<<" "<<GL_TRUE<<std::endl;
+	if (success!=GL_TRUE) {
+		GLint maxLength=0;
+		glGetShaderiv(shader_ID, GL_INFO_LOG_LENGTH, &maxLength);
+		std::vector<GLchar> infoLog(maxLength);
+		glGetShaderInfoLog(shader_ID, maxLength, &maxLength, &infoLog[0]);
+		for (int i=0; i<maxLength; ++i) std::cout<<infoLog[i];
+		std::cout<<std::endl;
+	}
 	glAttachShader(program, shader_ID);
 }
 
 
 void installShaders() {
 	GLuint program=glCreateProgram();
-	
+
 	setShader(GL_VERTEX_SHADER, VS, program);
 	setShader(GL_TESS_CONTROL_SHADER, TCS, program);
 	setShader(GL_TESS_EVALUATION_SHADER, TES, program);
 	setShader(GL_FRAGMENT_SHADER, FS, program);
-
+	
 	glLinkProgram(program);
 
 	GLint isLinked=0;
@@ -262,7 +270,6 @@ void openGL_draw() {
 	//glDrawArrays(GL_PATCHES, 3, 3);
 	//glDrawArrays(GL_PATCHES, 0, 4);
 	glDrawArrays(GL_PATCHES, 0, 2);
-	//glDrawArrays(GL_PATCHES, 1, 1);
 
 	glDisableVertexAttribArray(0);
 
@@ -274,7 +281,7 @@ void openGL_draw() {
 	calc_FPS();
 }
 
-std::chrono::time_point<std::chrono::steady_clock> last=std::chrono::time_point<std::chrono::steady_clock>(std::chrono::nanoseconds(0));
+std::chrono::time_point<std::chrono::high_resolution_clock> last=std::chrono::time_point<std::chrono::high_resolution_clock>(std::chrono::nanoseconds(0));
 int ticks=0;
 int fps=-1;
 
