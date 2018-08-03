@@ -1,4 +1,3 @@
-#include<windows.h>
 #include<gl/glew.h>
 #include<GLFW/glfw3.h>
 #include<glm/common.hpp>
@@ -13,66 +12,6 @@
 #include<vector>
 #define _USE_MATH_DEFINES
 #include<math.h>
-
-#if 0
-LRESULT CALLBACK WndProc(_In_ HWND   hwnd, _In_ UINT uMsg, _In_ WPARAM wParam, _In_ LPARAM lParam) {
-	return DefWindowProc(hwnd, uMsg, wParam, lParam);
-}
-
-void WINAPI_write_err() {
-	unsigned int err=GetLastError();
-	if (err==0)return;
-	std::cout<<err<<std::endl;
-}
-
-HWND WINAPI_createWindow() {
-	WNDCLASSEX cls;
-	{
-		cls.cbSize=sizeof(WNDCLASSEX);
-		cls.style=0;
-		cls.lpfnWndProc=&WndProc;
-		cls.cbClsExtra=0;
-		cls.cbWndExtra=0;
-		cls.hInstance=GetModuleHandle(NULL);
-		cls.hIcon=NULL;
-		cls.hCursor=NULL;
-		cls.hbrBackground=(HBRUSH)COLOR_ACTIVEBORDER;
-		cls.lpszMenuName=NULL;
-		cls.lpszClassName=L"WINDOW_class";
-		cls.hIconSm=NULL;
-	}
-	RegisterClassEx(&cls);
-
-	HWND win=CreateWindowEx(WS_EX_APPWINDOW|CS_OWNDC, cls.lpszClassName, L"HELLO WORLD", WS_EX_APPWINDOW|CS_OWNDC, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, GetModuleHandle(NULL), NULL);
-	
-	ShowWindow(win, SW_SHOWDEFAULT);
-	SetForegroundWindow(win);
-	SetFocus(win);
-	return win;
-}
-
-void WINAPI_messageLoop() {
-	MSG msg;
-	while (true) {
-		BOOL ret=GetMessage(&msg, NULL, 0, 0);
-		if (ret<0)throw ret;
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
-	}
-}
-
-HWND WINAPI_showWindow() {
-	HWND win=NULL;
-	std::thread thr([&]() {
-		win=WINAPI_createWindow();
-		WINAPI_messageLoop();
-	});
-	thr.detach();
-	while (win==NULL);
-	return win;
-}
-#endif
-
 
 #if 1
 
