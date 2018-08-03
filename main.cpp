@@ -1,11 +1,13 @@
-#include<windows.h>
-#include<gl/glew.h>
+#ifdef _WIN32
+	#include<windows.h>
+#endif
+#include<GL/glew.h>
 #include<GLFW/glfw3.h>
 #include<glm/common.hpp>
 #include<glm/gtc/matrix_transform.hpp>
 
-#include<gl/GL.h>
-#include<gl/GLU.h>
+#include<GL/gl.h>
+#include<GL/glu.h>
 
 #include<iostream>
 #include<thread>
@@ -207,7 +209,7 @@ GLuint MatrixID;
 void setShader(GLuint type, const std::string& shader, GLuint program) {
 	GLuint shader_ID=glCreateShader(type);
 	const char* adapter[1]={ shader.c_str() };
-	int len_adapter[1]={ shader.length() };
+	int len_adapter[1]={ (int)shader.length() };
 	glShaderSource(shader_ID, 1, adapter, 0);
 	glCompileShader(shader_ID);
 	GLint success=0;
@@ -341,7 +343,7 @@ int fps=-1;
 
 void calc_FPS() {
 	ticks++;
-	auto now=std::chrono::high_resolution_clock::now();
+	auto now=std::chrono::steady_clock::now();
 	long long dur=std::chrono::duration_cast<std::chrono::milliseconds>(now-last).count();
 	if (dur<1000)return;
 	fps=(int)std::round((float)ticks/dur*1000);
