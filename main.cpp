@@ -1,10 +1,10 @@
-#include<gl/glew.h>
+#include<GL/glew.h>
 #include<GLFW/glfw3.h>
 #include<glm/common.hpp>
 #include<glm/gtc/matrix_transform.hpp>
 
-#include<gl/GL.h>
-#include<gl/GLU.h>
+#include<GL/gl.h>
+#include<GL/glu.h>
 
 #include<iostream>
 #include<thread>
@@ -146,12 +146,20 @@ GLuint MatrixID;
 void setShader(GLuint type, const std::string& shader, GLuint program) {
 	GLuint shader_ID=glCreateShader(type);
 	const char* adapter[1]={ shader.c_str() };
-	int len_adapter[1]={ shader.length() };
+	int len_adapter[1]={ (int)shader.length() };
 	glShaderSource(shader_ID, 1, adapter, 0);
 	glCompileShader(shader_ID);
 	GLint success=0;
 	glGetShaderiv(shader_ID, GL_COMPILE_STATUS, &success);
 	std::cout<<"COMPILE: "<<success<<" "<<GL_TRUE<<std::endl;
+	if(success!=GL_TRUE){
+		GLint maxLength=0;
+		glGetShaderiv(shader_ID, GL_INFO_LOG_LENGTH, &maxLength);
+		std::vector<GLchar> infoLog(maxLength);
+		glGetShaderInfoLog(shader_ID, maxLength, &maxLength, &infoLog[0]);
+		for (int i=0; i<maxLength; ++i) std::cout<<infoLog[i];
+		std::cout<<"compilation failed, aborting."<<std::endl; abort();
+	}
 	glAttachShader(program, shader_ID);
 }
 
@@ -171,13 +179,13 @@ void installShaders() {
 	if (isLinked==GL_FALSE) {
 		GLint maxLength=0;
 		glGetProgramiv(program, GL_INFO_LOG_LENGTH, &maxLength);
-
 		// The maxLength includes the NULL character
 		std::vector<GLchar> infoLog(maxLength);
 		glGetProgramInfoLog(program, maxLength, &maxLength, &infoLog[0]);
-
-		for (int i=0; i<maxLength; ++i)std::cout<<infoLog[i];
-		std::cout<<std::endl;
+		for (int i=0; i<maxLength; ++i) std::cout<<infoLog[i];
+		std::cout<<"linking failed, aborting."<<std::endl; abort();
+		//std::cout<<std::endl;
+		//abort();
 	}
 	else std::cout<<"LINK: "<<isLinked<<" "<<GL_TRUE<<std::endl;
 	glUseProgram(program);
@@ -188,6 +196,8 @@ void openGL_draw();
 
 void GLFW_showWindow() {
 	glfwInit();
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 	GLFWwindow* win=glfwCreateWindow(1280, 960, "HELLO", NULL, NULL);
 	glfwMakeContextCurrent(win);
 	glfwSwapInterval(0);
@@ -280,7 +290,7 @@ int fps=-1;
 
 void calc_FPS() {
 	ticks++;
-	auto now=std::chrono::high_resolution_clock::now();
+	auto now=std::chrono::steady_clock::now();
 	long long dur=std::chrono::duration_cast<std::chrono::milliseconds>(now-last).count();
 	if (dur<1000)return;
 	fps=(int)std::round((float)ticks/dur*1000);
