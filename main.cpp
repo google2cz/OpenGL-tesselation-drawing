@@ -12,6 +12,7 @@
 #include<vector>
 #define _USE_MATH_DEFINES
 #include<math.h>
+#include<random>
 
 #if 1
 
@@ -19,10 +20,14 @@ const std::string VS=R"glsl(
 	#version 400 core
 	
 	layout(location = 0) in vec4 vertex_position;
+	layout(location = 1) in vec3 in_color;
+
+	out vec3 vs_color;
 
 	void main()
 	{
 		gl_Position=vertex_position;
+		vs_color=in_color;
 	}
 
 )glsl";
@@ -32,11 +37,20 @@ const std::string TCS=R"glsl(
 
 	layout(vertices=1) out;
 
+	in vec3 vs_color[];
+	patch out vec3 tcs_color;			// patch <=> one value for whole patch, not for each vertex
+
+	uniform mat4 MVP;
+	out vec3 projected_center[];
+
 	void main()
 	{
 		gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
-		gl_TessLevelOuter[1]=gl_TessLevelOuter[3]=gl_TessLevelInner[1]=100;
+		projected_center[gl_InvocationID]=(MVP*gl_in[gl_InvocationID].gl_Position).xyz;
+		gl_TessLevelOuter[1]=gl_TessLevelOuter[3]=gl_TessLevelInner[1]=10;
 		gl_TessLevelOuter[0]=gl_TessLevelOuter[2]=gl_TessLevelInner[0]=gl_TessLevelOuter[1]*2;
+
+		tcs_color=vs_color[0];						// color of first vertex is taken as color of sphere
 	}
 
 )glsl";
@@ -46,6 +60,10 @@ const std::string TES=R"glsl(
 
 	layout(quads, equal_spacing) in;
 
+	patch in vec3 tcs_color;
+	out vec3 tes_color;
+
+	in vec3 projected_center[];
 	uniform mat4 MVP;
 
 	#define M_PI 3.1415926535897932384626433832795
@@ -55,13 +73,28 @@ const std::string TES=R"glsl(
 		float phi = gl_TessCoord.y*M_PI;
 		float r = gl_in[0].gl_Position.w;
 		float dy = cos(phi)*r;
-		r = sqrt(r*r-dy*dy);
+		r = max(sqrt(r*r-dy*dy), 0);				// due float inaccuracy can sqrt result be nan
 		float dx = sin(psi)*r;
 		float dz = cos(psi)*r;
 		vec3 pt = gl_in[0].gl_Position.xyz+vec3(dx,dy,dz);
 		gl_Position=MVP*vec4(normalize(pt), 1);
+
+		tes_color=tcs_color;
 	}
 	
+)glsl";
+
+const std::string FS=R"glsl(
+	#version 400 core
+
+	layout(early_fragment_tests) in;	// Z-coord of fragment can not be changed here, because visibility test executed before shading
+
+	in vec3 tes_color;
+	out vec3 color;
+
+	void main(){
+		color = tes_color;
+	}
 )glsl";
 
 #else
@@ -126,10 +159,10 @@ const std::string TES=R"glsl(
 #endif
 )glsl";
 
-#endif
-
 const std::string FS=R"glsl(
 	#version 400 core
+
+	layout(early_fragment_tests) in;
 
 	out vec3 color;
 
@@ -138,9 +171,14 @@ const std::string FS=R"glsl(
 	}
 )glsl";
 
+#endif
+
+
+
 GLuint ProgramID;
 GLuint VertexArrayID;
 GLuint VertexBuffer;
+GLuint ColorBuffer;
 GLuint MatrixID;
 
 void setShader(GLuint type, const std::string& shader, GLuint program) {
@@ -203,37 +241,14 @@ void GLFW_showWindow() {
 	glewInit();
 	installShaders();
 
-	glGenVertexArrays(1, &VertexArrayID);
-	glBindVertexArray(VertexArrayID);
+	//glGenVertexArrays(2, &VertexArrayID);
+	//glBindVertexArray(VertexArrayID);
 
 	glGenBuffers(1, &VertexBuffer);
 	glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
+	glGenBuffers(1, &ColorBuffer);
+	glBindBuffer(GL_ARRAY_BUFFER, ColorBuffer);
 
-	std::vector<float> verts_tri{
-		-0.05f, 0.05f, -0.5f,
-		-0.05f, -0.05f, -0.5f,
-		0.05f, -0.05f, -0.5f,
-		
-		-0.05f, 0.05f, -0.5f,
-		0.05f, 0.05f, -0.5f,
-		0.05f, -0.05f, -0.5f 
-	};
-
-	std::vector<float> verts_square{
-		-0.05f, -0.05f, -0.5f,
-		0.05f, -0.05f, -0.5f,
-		0.05f, 0.05f, -0.5f,
-		-0.05f, 0.05f, -0.5f,
-	};
-
-	std::vector<float> verts_sphere{
-		0.1f, 0.0f, -1.0f, 0.1f,
-		-0.2f, 0.0f, -1.0f, 0.2f
-	};
-
-	auto&& verts=verts_sphere;
-	glBufferData(GL_ARRAY_BUFFER, verts.size()*sizeof(float), &verts[0], GL_STATIC_DRAW);
-	
 	MatrixID=glGetUniformLocation(ProgramID, "MVP");
 
 	while (!glfwWindowShouldClose(win)) {
@@ -243,13 +258,48 @@ void GLFW_showWindow() {
 		glfwPollEvents();
 	}
 
-	//glfwDestroyWindow(win);
+	glfwDestroyWindow(win);
 }
+
+std::vector<float> verts_tri{
+	-0.05f, 0.05f, -0.5f,
+	-0.05f, -0.05f, -0.5f,
+	0.05f, -0.05f, -0.5f,
+
+	-0.05f, 0.05f, -0.5f,
+	0.05f, 0.05f, -0.5f,
+	0.05f, -0.05f, -0.5f
+};
+
+std::vector<float> verts_square{
+	-0.05f, -0.05f, -0.5f,
+	0.05f, -0.05f, -0.5f,
+	0.05f, 0.05f, -0.5f,
+	-0.05f, 0.05f, -0.5f,
+};
+
+std::vector<float> verts_sphere{
+	0.1f, 0.0f, -1.0f, 0.1f,
+	-0.2f, 0.0f, -1.0f, 0.2f
+};
+
+std::vector<float> colors_sphere{
+	1.0f, 0.0f, 0.0f,
+	0.0f, 1.0f, 0.0f,
+};
 
 void calc_FPS();
 
+int i=0;
+
 void openGL_draw() {
 	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+
+	i=(i+1)%10000;
+	auto&& verts=verts_sphere;
+	verts[1]=i/10000.0/2;
+	verts[5]=-i/10000.0/2;
+	auto&& colors=colors_sphere;
 
 	glPatchParameteri(GL_PATCH_VERTICES, 1);
 	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -260,18 +310,19 @@ void openGL_draw() {
 
 	glEnableVertexAttribArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
-	#ifdef TRI_OR_QUAD
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-	#else
 	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, 0);
-	#endif
+	glBufferData(GL_ARRAY_BUFFER, verts.size()*sizeof(float), &verts[0], GL_STATIC_DRAW);
 
-	//glDrawArrays(GL_PATCHES, 0, 3);
-	//glDrawArrays(GL_PATCHES, 3, 3);
-	//glDrawArrays(GL_PATCHES, 0, 4);
+	glEnableVertexAttribArray(1);
+	glBindBuffer(GL_ARRAY_BUFFER, ColorBuffer);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
+	glBufferData(GL_ARRAY_BUFFER, colors.size()*sizeof(float), &colors[0], GL_STATIC_DRAW);
+
 	glDrawArrays(GL_PATCHES, 0, 2);
 
 	glDisableVertexAttribArray(0);
+	glDisableVertexAttribArray(1);
+	
 
 	GLuint error=glGetError();
 	if (error!=GL_NO_ERROR)std::cout<<"ERR: 0x"<<std::hex<<error<<std::endl;
