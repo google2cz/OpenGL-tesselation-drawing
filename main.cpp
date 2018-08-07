@@ -10,23 +10,32 @@
 #include<thread>
 #include<string>
 #include<vector>
+#include<tuple>
 #define _USE_MATH_DEFINES
 #include<math.h>
 #include<random>
 
-#if 1
+#define GLEE() {  \
+	GLenum err=glGetError();  \
+	 if(err!=GL_NO_ERROR) {  \
+		std::cerr<<__FILE__<<":"<<__LINE__<<": 0x"<<std::hex<<err<<": "<<gluErrorString(err)<<std::endl;  \
+		abort();  \
+	 }  \
+}
+
+//#define GLEE() {}
 
 const std::string VS=R"glsl(
 	#version 400 core
-	
-	layout(location = 0) in vec4 vertex_position;
+
+	layout(location = 0) in vec4 in_position;
 	layout(location = 1) in vec3 in_color;
 
 	out vec3 vs_color;
 
 	void main()
 	{
-		gl_Position=vertex_position;
+		gl_Position=in_position;
 		vs_color=in_color;
 	}
 
@@ -40,13 +49,9 @@ const std::string TCS=R"glsl(
 	in vec3 vs_color[];
 	patch out vec3 tcs_color;			// patch <=> one value for whole patch, not for each vertex
 
-	uniform mat4 MVP;
-	out vec3 projected_center[];
-
 	void main()
 	{
 		gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
-		projected_center[gl_InvocationID]=(MVP*gl_in[gl_InvocationID].gl_Position).xyz;
 		gl_TessLevelOuter[1]=gl_TessLevelOuter[3]=gl_TessLevelInner[1]=10;
 		gl_TessLevelOuter[0]=gl_TessLevelOuter[2]=gl_TessLevelInner[0]=gl_TessLevelOuter[1]*2;
 
@@ -63,7 +68,6 @@ const std::string TES=R"glsl(
 	patch in vec3 tcs_color;
 	out vec3 tes_color;
 
-	in vec3 projected_center[];
 	uniform mat4 MVP;
 
 	#define M_PI 3.1415926535897932384626433832795
@@ -97,9 +101,7 @@ const std::string FS=R"glsl(
 	}
 )glsl";
 
-#else
-
-#define TRI_OR_QUAD
+#if 0
 
 const std::string VS=R"glsl(
 	#version 400 core
@@ -173,15 +175,14 @@ const std::string FS=R"glsl(
 
 #endif
 
+struct OpenGL_IDs {
+	GLuint programID;
+	GLuint spheresBufferID;
+	GLuint colorBufferID;
+	GLuint projectionMatrixID;
+};
 
-
-GLuint ProgramID;
-GLuint VertexArrayID;
-GLuint VertexBuffer;
-GLuint ColorBuffer;
-GLuint MatrixID;
-
-void setShader(GLuint type, const std::string& shader, GLuint program) {
+void installShader(GLuint type, const std::string& shader, GLuint program) {
 	GLuint shader_ID=glCreateShader(type);
 	const char* adapter[1]={ shader.c_str() };
 	int len_adapter[1]={ (int)shader.length() };
@@ -202,13 +203,13 @@ void setShader(GLuint type, const std::string& shader, GLuint program) {
 }
 
 
-void installShaders() {
+GLuint installShaders() {
 	GLuint program=glCreateProgram();
 
-	setShader(GL_VERTEX_SHADER, VS, program);
-	setShader(GL_TESS_CONTROL_SHADER, TCS, program);
-	setShader(GL_TESS_EVALUATION_SHADER, TES, program);
-	setShader(GL_FRAGMENT_SHADER, FS, program);
+	installShader(GL_VERTEX_SHADER, VS, program);
+	installShader(GL_TESS_CONTROL_SHADER, TCS, program);
+	installShader(GL_TESS_EVALUATION_SHADER, TES, program);
+	installShader(GL_FRAGMENT_SHADER, FS, program);
 	
 	glLinkProgram(program);
 
@@ -227,38 +228,49 @@ void installShaders() {
 	}
 	else std::cout<<"LINK: "<<isLinked<<" "<<GL_TRUE<<std::endl;
 	glUseProgram(program);
-	ProgramID=program;
+	return program;
 }
 
-void openGL_draw();
-
-void GLFW_showWindow() {
+GLFWwindow* createWindow() {
 	glfwInit();
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 	GLFWwindow* win=glfwCreateWindow(1280, 960, "HELLO", NULL, NULL);
 	glfwMakeContextCurrent(win);
 	glfwSwapInterval(0);
+	return win;
+}
 
+OpenGL_IDs initOpenGL() {
 	glewInit();
-	installShaders();
+	OpenGL_IDs ret;
+	ret.programID=installShaders();
 
-	//glGenVertexArrays(2, &VertexArrayID);
-	//glBindVertexArray(VertexArrayID);
+	// create VAO
+	GLuint VAO;
+	glGenVertexArrays(1, &VAO);
+	glBindVertexArray(VAO);		
+	// alloc buffers
+	glGenBuffers(1, &ret.spheresBufferID);
+	glBindBuffer(GL_ARRAY_BUFFER, ret.spheresBufferID);
+	glGenBuffers(1, &ret.colorBufferID);
+	glBindBuffer(GL_ARRAY_BUFFER, ret.colorBufferID);
+	ret.projectionMatrixID=glGetUniformLocation(ret.programID, "MVP");
 
-	glGenBuffers(1, &VertexBuffer);
-	glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
-	glGenBuffers(1, &ColorBuffer);
-	glBindBuffer(GL_ARRAY_BUFFER, ColorBuffer);
+	glPatchParameteri(GL_PATCH_VERTICES, 1);
 
-	MatrixID=glGetUniformLocation(ProgramID, "MVP");
+	return ret;
+}
 
+void draw(OpenGL_IDs args);
+
+void drawingLoop(GLFWwindow* win, OpenGL_IDs args) {
 	while (!glfwWindowShouldClose(win)) {
-		openGL_draw();
+		draw(args);
 
 		glfwSwapBuffers(win);
 		glfwPollEvents();
 	}
-
-	glfwDestroyWindow(win);
 }
 
 std::vector<float> verts_tri{
@@ -290,9 +302,9 @@ std::vector<float> colors_sphere{
 
 void calc_FPS();
 
-int i=0;
+int i=0;		// global variable to determine draw loop index
 
-void openGL_draw() {
+void draw(OpenGL_IDs args) {
 	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 
 	i=(i+1)%10000;
@@ -301,37 +313,46 @@ void openGL_draw() {
 	verts[5]=-i/10000.0/2;
 	auto&& colors=colors_sphere;
 
-	glPatchParameteri(GL_PATCH_VERTICES, 1);
 	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
 	glm::mat4 mvp=glm::perspective(glm::radians(45.0), 1.0, 0.1, 20.0);
 	//mvp=glm::ortho(-1, 1, -1, 1);
-	glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &mvp[0][0]);
+	glUniformMatrix4fv(args.projectionMatrixID, 1, GL_FALSE, &mvp[0][0]);
+	GLEE();
 
 	glEnableVertexAttribArray(0);
-	glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
-	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, 0);
+	GLEE();
+	glBindBuffer(GL_ARRAY_BUFFER, args.spheresBufferID);
+	GLEE();
+	glVertexAttribPointer(glGetAttribLocation(args.programID, "in_position"), 4, GL_FLOAT, GL_FALSE, 0, 0);
+	GLEE();
 	glBufferData(GL_ARRAY_BUFFER, verts.size()*sizeof(float), &verts[0], GL_STATIC_DRAW);
+	GLEE();
 
 	glEnableVertexAttribArray(1);
-	glBindBuffer(GL_ARRAY_BUFFER, ColorBuffer);
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
+	GLEE();
+	glBindBuffer(GL_ARRAY_BUFFER, args.colorBufferID);
+	GLEE();
+	glVertexAttribPointer(glGetAttribLocation(args.programID, "in_color"), 3, GL_FLOAT, GL_FALSE, 0, 0);
+	GLEE();
 	glBufferData(GL_ARRAY_BUFFER, colors.size()*sizeof(float), &colors[0], GL_STATIC_DRAW);
+	GLEE();
 
 	glDrawArrays(GL_PATCHES, 0, 2);
+	GLEE();
 
 	glDisableVertexAttribArray(0);
+	GLEE();
 	glDisableVertexAttribArray(1);
-	
-
-	GLuint error=glGetError();
-	if (error!=GL_NO_ERROR)std::cout<<"ERR: 0x"<<std::hex<<error<<std::endl;
+	GLEE();
 
 	glFinish();
+	GLEE();
 
 	calc_FPS();
 }
 
+// those global variables are just for calc_FPS() function
 std::chrono::time_point<std::chrono::high_resolution_clock> last=std::chrono::time_point<std::chrono::high_resolution_clock>(std::chrono::nanoseconds(0));
 int ticks=0;
 int fps=-1;
@@ -344,14 +365,14 @@ void calc_FPS() {
 	fps=(int)std::round((float)ticks/dur*1000);
 	last=now;
 	ticks=0;
-	std::cout<<fps<<std::endl;
+	std::cout<<"FPS: "<<fps<<std::endl;
 }
 
 int main(int argc, char** argv) {
-
-	GLFW_showWindow();
-
-	//system("pause");
+	GLFWwindow* win=createWindow();
+	OpenGL_IDs args=initOpenGL();
+	drawingLoop(win, args);
+	glfwDestroyWindow(win);
 
 	return 0;
 }
