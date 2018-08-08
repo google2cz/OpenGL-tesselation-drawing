@@ -309,7 +309,7 @@ void draw(OpenGL_IDs programs) {
 	{		// draw spheres using tesselation shader program
 		glUseProgram(programs.tesselationProgram.programID); GLEE();
 		glPatchParameteri(GL_PATCH_VERTICES, 1); GLEE();				// patch size can be specified once before fisrt draw, if will not be modified all over drawing loop
-		glUniformMatrix4fv(programs.tesselationProgram.projectionMatrixID, 1, GL_FALSE, &mvp[0][0]); GLEE();
+		glUniformMatrix4fv(programs.tesselationProgram.projectionMatrixID, 1, GL_FALSE, &mvp[0][0]); GLEE();	// can be once set in init() if not changed for each frame
 
 		glEnableVertexAttribArray(0); GLEE();
 		glBindBuffer(GL_ARRAY_BUFFER, programs.tesselationProgram.objectsBufferID); GLEE();
@@ -330,7 +330,7 @@ void draw(OpenGL_IDs programs) {
 
 	{	// draw triangles using only vertex shader and fragment shader program
 		glUseProgram(programs.trianglesProgram.programID); GLEE();
-		glUniformMatrix4fv(programs.trianglesProgram.projectionMatrixID, 1, GL_FALSE, &mvp[0][0]); GLEE();
+		glUniformMatrix4fv(programs.trianglesProgram.projectionMatrixID, 1, GL_FALSE, &mvp[0][0]); GLEE();		// can be once set in init() if not changed for each frame
 
 		glEnableVertexAttribArray(0); GLEE();
 		glBindBuffer(GL_ARRAY_BUFFER, programs.trianglesProgram.objectsBufferID); GLEE();
