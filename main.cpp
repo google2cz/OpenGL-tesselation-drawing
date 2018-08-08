@@ -25,8 +25,8 @@
 
 //#define GLEE() {}
 
-const std::string VS=R"glsl(
-	#version 400 core
+const std::string TESSELATION_VS=R"glsl(
+	#version 400
 
 	layout(location = 0) in vec4 in_position;
 	layout(location = 1) in vec3 in_color;
@@ -41,8 +41,8 @@ const std::string VS=R"glsl(
 
 )glsl";
 
-const std::string TCS=R"glsl(
-	#version 400 core
+const std::string TESSELATION_TCS=R"glsl(
+	#version 400
 
 	layout(vertices=1) out;
 
@@ -60,8 +60,8 @@ const std::string TCS=R"glsl(
 
 )glsl";
 
-const std::string TES=R"glsl(
-	#version 400 core
+const std::string TESSELATION_TES=R"glsl(
+	#version 400
 
 	layout(quads, equal_spacing) in;
 
@@ -88,8 +88,8 @@ const std::string TES=R"glsl(
 	
 )glsl";
 
-const std::string FS=R"glsl(
-	#version 400 core
+const std::string TESSELATION_FS=R"glsl(
+	#version 400
 
 	layout(early_fragment_tests) in;	// Z-coord of fragment can not be changed here, because visibility test executed before shading
 
@@ -101,85 +101,46 @@ const std::string FS=R"glsl(
 	}
 )glsl";
 
-#if 0
-
-const std::string VS=R"glsl(
+const std::string TRIANGLES_VS=R"glsl(
 	#version 400 core
-	
-	layout(location = 0) in vec3 vertex_position;
 
+	layout(location = 0) in vec3 in_position;
+	layout(location = 1) in vec3 in_color;
 	uniform mat4 MVP;
 
-	void main()
-	{
-		gl_Position=MVP*vec4(vertex_position, 1);
-	}
-
-)glsl";
-
-const std::string TCS=R"glsl(
-	#version 400 core
-
-	layout(vertices=4) out;
+	out vec3 vs_color;
 
 	void main()
 	{
-		gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
-		gl_TessLevelOuter[0]=gl_TessLevelOuter[1]=gl_TessLevelOuter[2]=gl_TessLevelOuter[3]=5;
-		gl_TessLevelInner[0]=gl_TessLevelInner[1]=7;
+		gl_Position=MVP*vec4(in_position, 1);
+		vs_color=in_color;
 	}
-
 )glsl";
 
-const std::string TES=R"glsl(
-	#version 400 core
-#if 0
+const std::string TRIANGLES_FS=R"glsl(
+	#version 400
 
-	layout (triangles, equal_spacing) in;
+	layout(early_fragment_tests) in;	// Z-coord of fragment can not be changed here, because visibility test executed before shading
 
-	void main(){ 
-		vec3 a=gl_TessCoord.x*gl_in[0].gl_Position.xyz;
-		vec3 b=gl_TessCoord.y*gl_in[1].gl_Position.xyz;
-		vec3 c=gl_TessCoord.z*gl_in[2].gl_Position.xyz;
-		gl_Position = vec4(normalize(a+b+c),1);
-	}
-
-#else
-	
-	layout (quads, equal_spacing) in;
-
-	void main(){
-		vec3 pos=gl_in[0].gl_Position.xyz;
-		vec3 u=gl_in[1].gl_Position.xyz-gl_in[0].gl_Position.xyz;
-		vec3 v=gl_in[3].gl_Position.xyz-gl_in[0].gl_Position.xyz;
-		pos+=gl_TessCoord.x*u;
-		pos+=gl_TessCoord.y*v;
-		pos=normalize(pos);
-		gl_Position = vec4(pos, 1);
-	}
-
-#endif
-)glsl";
-
-const std::string FS=R"glsl(
-	#version 400 core
-
-	layout(early_fragment_tests) in;
-
+	in vec3 vs_color;
 	out vec3 color;
 
 	void main(){
-		color = vec3(1,1,0);
+		color = vs_color;
 	}
 )glsl";
 
-#endif
-
-struct OpenGL_IDs {
+struct OpenGL_Program {
 	GLuint programID;
-	GLuint spheresBufferID;
+	GLuint objectsBufferID;
 	GLuint colorBufferID;
 	GLuint projectionMatrixID;
+	GLuint trianglesProgram;
+};
+
+struct OpenGL_IDs {
+	OpenGL_Program tesselationProgram;
+	OpenGL_Program trianglesProgram;
 };
 
 void installShader(GLuint type, const std::string& shader, GLuint program) {
@@ -202,17 +163,7 @@ void installShader(GLuint type, const std::string& shader, GLuint program) {
 	glAttachShader(program, shader_ID);
 }
 
-
-GLuint installShaders() {
-	GLuint program=glCreateProgram();
-
-	installShader(GL_VERTEX_SHADER, VS, program);
-	installShader(GL_TESS_CONTROL_SHADER, TCS, program);
-	installShader(GL_TESS_EVALUATION_SHADER, TES, program);
-	installShader(GL_FRAGMENT_SHADER, FS, program);
-	
-	glLinkProgram(program);
-
+void programLinkingErrorControl(GLuint program) {
 	GLint isLinked=0;
 	glGetProgramiv(program, GL_LINK_STATUS, (int *)&isLinked);
 	if (isLinked==GL_FALSE) {
@@ -227,8 +178,43 @@ GLuint installShaders() {
 		std::cout<<std::endl;
 	}
 	else std::cout<<"LINK: "<<isLinked<<" "<<GL_TRUE<<std::endl;
-	glUseProgram(program);
-	return program;
+}
+
+OpenGL_Program installTesselationProgram() {
+	OpenGL_Program ret;
+	ret.programID=glCreateProgram();
+	installShader(GL_VERTEX_SHADER, TESSELATION_VS, ret.programID);
+	installShader(GL_TESS_CONTROL_SHADER, TESSELATION_TCS, ret.programID);
+	installShader(GL_TESS_EVALUATION_SHADER, TESSELATION_TES, ret.programID);
+	installShader(GL_FRAGMENT_SHADER, TESSELATION_FS, ret.programID);
+	glLinkProgram(ret.programID);
+	programLinkingErrorControl(ret.programID);
+	return ret;
+}
+
+OpenGL_Program installTrianglesProgram() {
+	OpenGL_Program ret;
+	ret.programID=glCreateProgram();
+	installShader(GL_VERTEX_SHADER, TRIANGLES_VS, ret.programID);
+	installShader(GL_FRAGMENT_SHADER, TRIANGLES_FS, ret.programID);
+	glLinkProgram(ret.programID);
+	programLinkingErrorControl(ret.programID);
+	return ret;
+}
+
+OpenGL_IDs installPrograms() {
+	OpenGL_IDs ret;
+	ret.tesselationProgram=installTesselationProgram();
+	ret.trianglesProgram=installTrianglesProgram();
+	return ret;
+}
+
+void initProgramBuffers(OpenGL_Program& program) {
+	glGenBuffers(1, &program.objectsBufferID);
+	glBindBuffer(GL_ARRAY_BUFFER, program.objectsBufferID);
+	glGenBuffers(1, &program.colorBufferID);
+	glBindBuffer(GL_ARRAY_BUFFER, program.colorBufferID);
+	program.projectionMatrixID=glGetUniformLocation(program.programID, "MVP");
 }
 
 GLFWwindow* createWindow() {
@@ -243,44 +229,49 @@ GLFWwindow* createWindow() {
 
 OpenGL_IDs initOpenGL() {
 	glewInit();
-	OpenGL_IDs ret;
-	ret.programID=installShaders();
+	OpenGL_IDs ret=installPrograms();
 
 	// create VAO
 	GLuint VAO;
 	glGenVertexArrays(1, &VAO);
 	glBindVertexArray(VAO);		
 	// alloc buffers
-	glGenBuffers(1, &ret.spheresBufferID);
-	glBindBuffer(GL_ARRAY_BUFFER, ret.spheresBufferID);
-	glGenBuffers(1, &ret.colorBufferID);
-	glBindBuffer(GL_ARRAY_BUFFER, ret.colorBufferID);
-	ret.projectionMatrixID=glGetUniformLocation(ret.programID, "MVP");
-
-	glPatchParameteri(GL_PATCH_VERTICES, 1);
+	initProgramBuffers(ret.tesselationProgram);
+	initProgramBuffers(ret.trianglesProgram);
 
 	return ret;
 }
 
 void draw(OpenGL_IDs args);
+void calc_FPS();
 
 void drawingLoop(GLFWwindow* win, OpenGL_IDs args) {
 	while (!glfwWindowShouldClose(win)) {
 		draw(args);
 
 		glfwSwapBuffers(win);
+		calc_FPS();
 		glfwPollEvents();
 	}
 }
 
 std::vector<float> verts_tri{
-	-0.05f, 0.05f, -0.5f,
-	-0.05f, -0.05f, -0.5f,
-	0.05f, -0.05f, -0.5f,
+	0.3f, 0.05f, -1.0f,
+	0.3f, -0.05f, -1.0f,
+	0.4f, -0.05f, -1.0f,
 
-	-0.05f, 0.05f, -0.5f,
-	0.05f, 0.05f, -0.5f,
-	0.05f, -0.05f, -0.5f
+	0.3f, 0.05f, -1.0f,
+	0.4f, 0.05f, -1.0f,
+	0.4f, -0.05f, -1.0f
+};
+
+std::vector<float> colors_tri{
+	1.0f, 0.0f, 0.0f,
+	0.0f, 1.0f, 0.0f,
+	0.0f, 0.0f, 1.0f,
+	0.0f, 1.0f, 0.0f,
+	1.0f, 0.0f, 0.0f,
+	0.0f, 0.0f, 1.0f
 };
 
 std::vector<float> verts_square{
@@ -292,64 +283,70 @@ std::vector<float> verts_square{
 
 std::vector<float> verts_sphere{
 	0.1f, 0.0f, -1.0f, 0.1f,
-	-0.2f, 0.0f, -1.0f, 0.2f
+	-0.2f, 0.0f, -1.0f, 0.2f,
+	0.5f, 0.5f, -1.5f, 0.1f
 };
 
 std::vector<float> colors_sphere{
 	1.0f, 0.0f, 0.0f,
 	0.0f, 1.0f, 0.0f,
+	0.0f, 0.0f, 1.0f
 };
-
-void calc_FPS();
 
 int i=0;		// global variable to determine draw loop index
 
-void draw(OpenGL_IDs args) {
-	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+void draw(OpenGL_IDs programs) {
+	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT); GLEE();
 
 	i=(i+1)%10000;
-	auto&& verts=verts_sphere;
-	verts[1]=i/10000.0/2;
-	verts[5]=-i/10000.0/2;
-	auto&& colors=colors_sphere;
+	verts_sphere[1]=i/10000.0/2;
+	verts_sphere[5]=-i/10000.0/2;
 
 	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-
 	glm::mat4 mvp=glm::perspective(glm::radians(45.0), 1.0, 0.1, 20.0);
 	//mvp=glm::ortho(-1, 1, -1, 1);
-	glUniformMatrix4fv(args.projectionMatrixID, 1, GL_FALSE, &mvp[0][0]);
-	GLEE();
 
-	glEnableVertexAttribArray(0);
-	GLEE();
-	glBindBuffer(GL_ARRAY_BUFFER, args.spheresBufferID);
-	GLEE();
-	glVertexAttribPointer(glGetAttribLocation(args.programID, "in_position"), 4, GL_FLOAT, GL_FALSE, 0, 0);
-	GLEE();
-	glBufferData(GL_ARRAY_BUFFER, verts.size()*sizeof(float), &verts[0], GL_STATIC_DRAW);
-	GLEE();
+	{		// draw spheres using tesselation shader program
+		glUseProgram(programs.tesselationProgram.programID); GLEE();
+		glPatchParameteri(GL_PATCH_VERTICES, 1); GLEE();				// patch size can be specified once before fisrt draw, if will not be modified all over drawing loop
+		glUniformMatrix4fv(programs.tesselationProgram.projectionMatrixID, 1, GL_FALSE, &mvp[0][0]); GLEE();
 
-	glEnableVertexAttribArray(1);
-	GLEE();
-	glBindBuffer(GL_ARRAY_BUFFER, args.colorBufferID);
-	GLEE();
-	glVertexAttribPointer(glGetAttribLocation(args.programID, "in_color"), 3, GL_FLOAT, GL_FALSE, 0, 0);
-	GLEE();
-	glBufferData(GL_ARRAY_BUFFER, colors.size()*sizeof(float), &colors[0], GL_STATIC_DRAW);
-	GLEE();
+		glEnableVertexAttribArray(0); GLEE();
+		glBindBuffer(GL_ARRAY_BUFFER, programs.tesselationProgram.objectsBufferID); GLEE();
+		glVertexAttribPointer(glGetAttribLocation(programs.tesselationProgram.programID, "in_position"), 4, GL_FLOAT, GL_FALSE, 0, 0); GLEE();
+		glBufferData(GL_ARRAY_BUFFER, verts_sphere.size()*sizeof(float), &verts_sphere[0], GL_STATIC_DRAW); GLEE();
 
-	glDrawArrays(GL_PATCHES, 0, 2);
-	GLEE();
+		glEnableVertexAttribArray(1); GLEE();
+		glBindBuffer(GL_ARRAY_BUFFER, programs.tesselationProgram.colorBufferID); GLEE();
+		glVertexAttribPointer(glGetAttribLocation(programs.tesselationProgram.programID, "in_color"), 3, GL_FLOAT, GL_FALSE, 0, 0); GLEE();
+		glBufferData(GL_ARRAY_BUFFER, colors_sphere.size()*sizeof(float), &colors_sphere[0], GL_STATIC_DRAW); GLEE();
 
-	glDisableVertexAttribArray(0);
-	GLEE();
-	glDisableVertexAttribArray(1);
-	GLEE();
+		glDrawArrays(GL_PATCHES, 0, 3); GLEE();
 
-	glFinish();
-	GLEE();
+		glDisableVertexAttribArray(1); GLEE();
+		glDisableVertexAttribArray(0); GLEE();
+	}
 
-	calc_FPS();
+
+	{	// draw triangles using only vertex shader and fragment shader program
+		glUseProgram(programs.trianglesProgram.programID); GLEE();
+		glUniformMatrix4fv(programs.trianglesProgram.projectionMatrixID, 1, GL_FALSE, &mvp[0][0]); GLEE();
+
+		glEnableVertexAttribArray(0); GLEE();
+		glBindBuffer(GL_ARRAY_BUFFER, programs.trianglesProgram.objectsBufferID); GLEE();
+		glVertexAttribPointer(glGetAttribLocation(programs.trianglesProgram.programID, "in_position"), 3, GL_FLOAT, GL_FALSE, 0, 0); GLEE();
+		glBufferData(GL_ARRAY_BUFFER, verts_tri.size()*sizeof(float), &verts_tri[0], GL_STATIC_DRAW); GLEE();
+
+		glEnableVertexAttribArray(1); GLEE();
+		glBindBuffer(GL_ARRAY_BUFFER, programs.trianglesProgram.colorBufferID); GLEE();
+		glVertexAttribPointer(glGetAttribLocation(programs.trianglesProgram.programID, "in_color"), 3, GL_FLOAT, GL_FALSE, 0, 0); GLEE();
+		glBufferData(GL_ARRAY_BUFFER, colors_tri.size()*sizeof(float), &colors_tri[0], GL_STATIC_DRAW); GLEE();
+
+		glDrawArrays(GL_TRIANGLES, 0, 6); GLEE();
+
+		glDisableVertexAttribArray(1); GLEE();
+		glDisableVertexAttribArray(0); GLEE();
+	}
 }
 
 // those global variables are just for calc_FPS() function
