@@ -242,15 +242,33 @@ OpenGL_IDs initOpenGL() {
 	return ret;
 }
 
-void draw(OpenGL_IDs args);
-void calc_FPS();
+class FPS_counter {
+public:
+	void tick() {
+		ticks++;
+		auto now=std::chrono::high_resolution_clock::now();
+		long long dur=std::chrono::duration_cast<std::chrono::milliseconds>(now-last).count();
+		if (dur<1000)return;
+		fps=(int)std::round((float)ticks/dur*1000);
+		last=now;
+		ticks=0;
+		std::cout<<"FPS: "<<fps<<std::endl;
+	}
+private:
+	std::chrono::time_point<std::chrono::high_resolution_clock> last=std::chrono::time_point<std::chrono::high_resolution_clock>(std::chrono::nanoseconds(0));
+	int ticks=0;
+	int fps=-1;
+};
+
+void draw(OpenGL_IDs args, unsigned int iteration_number);
 
 void drawingLoop(GLFWwindow* win, OpenGL_IDs args) {
-	while (!glfwWindowShouldClose(win)) {
-		draw(args);
+	FPS_counter counter;
+	for (unsigned i=0; !glfwWindowShouldClose(win); ++i) {
+		draw(args, i);
 
 		glfwSwapBuffers(win);
-		calc_FPS();
+		counter.tick();
 		glfwPollEvents();
 	}
 }
@@ -274,13 +292,6 @@ std::vector<float> colors_tri{
 	0.0f, 0.0f, 1.0f
 };
 
-std::vector<float> verts_square{
-	-0.05f, -0.05f, -0.5f,
-	0.05f, -0.05f, -0.5f,
-	0.05f, 0.05f, -0.5f,
-	-0.05f, 0.05f, -0.5f,
-};
-
 std::vector<float> verts_sphere{
 	0.1f, 0.0f, -1.0f, 0.1f,
 	-0.2f, 0.0f, -1.0f, 0.2f,
@@ -293,14 +304,12 @@ std::vector<float> colors_sphere{
 	0.0f, 0.0f, 1.0f
 };
 
-int i=0;		// global variable to determine draw loop index
-
-void draw(OpenGL_IDs programs) {
+void draw(OpenGL_IDs programs, unsigned int iteration_number) {
 	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT); GLEE();
 
-	i=(i+1)%10000;
+	unsigned int i=iteration_number%10000;
 	verts_sphere[1]=i/10000.0/2;
-	verts_sphere[5]=-i/10000.0/2;
+	verts_sphere[5]=-(i/10000.0/2);
 
 	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	glm::mat4 mvp=glm::perspective(glm::radians(45.0), 1.0, 0.1, 20.0);
@@ -347,22 +356,6 @@ void draw(OpenGL_IDs programs) {
 		glDisableVertexAttribArray(1); GLEE();
 		glDisableVertexAttribArray(0); GLEE();
 	}
-}
-
-// those global variables are just for calc_FPS() function
-std::chrono::time_point<std::chrono::high_resolution_clock> last=std::chrono::time_point<std::chrono::high_resolution_clock>(std::chrono::nanoseconds(0));
-int ticks=0;
-int fps=-1;
-
-void calc_FPS() {
-	ticks++;
-	auto now=std::chrono::high_resolution_clock::now();
-	long long dur=std::chrono::duration_cast<std::chrono::milliseconds>(now-last).count();
-	if (dur<1000)return;
-	fps=(int)std::round((float)ticks/dur*1000);
-	last=now;
-	ticks=0;
-	std::cout<<"FPS: "<<fps<<std::endl;
 }
 
 int main(int argc, char** argv) {
